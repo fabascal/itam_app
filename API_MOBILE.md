@@ -8,7 +8,7 @@ Base:
 https://activo.combuexpress.com.mx/api/mobile
 ```
 
-Todas las respuestas son JSON. Las rutas de datos piden el permiso `assets.read`.
+Todas las respuestas son JSON, salvo la descarga de un archivo. `GET /me` solo pide sesión. El resto de lecturas pide `assets.read`. Crear, marcar, cerrar y subir fotos de un conteo pide `assets.write`. La app oculta esas acciones si `permissions` no incluye `assets.write`. El rol Tech hoy solo tiene `assets.read`.
 
 ## Autenticación
 
@@ -199,6 +199,129 @@ Fechas en ISO 8601 UTC. Mostrarlas en la app como `dd/mm/aaaa`. `location` es `n
 | `location` | `{ id, name, path }` \| null | Solo en el detalle |
 | `specifications` | object | Solo en el detalle |
 
+## Perfil
+
+### GET /me
+
+Solo sesión. Sirve para pintar el nombre y decidir qué botones mostrar.
+
+```json
+{
+  "user": {
+    "id": 1,
+    "fullName": "Nombre Apellido",
+    "email": "usuario@combu-express.com.mx",
+    "role": { "id": 1, "name": "Admin" }
+  },
+  "permissions": ["assets.read", "assets.write"]
+}
+```
+
+## Tickets del activo
+
+### GET /assets/:id/tickets
+
+Historial del equipo, el más reciente primero. `404` si el activo no existe.
+
+```json
+{
+  "tickets": [
+    {
+      "id": 10,
+      "title": "No enciende",
+      "description": "Falla al arrancar",
+      "status": "OPEN",
+      "priority": "HIGH",
+      "level": "LEVEL_1",
+      "createdAt": "2026-10-01T15:00:00.000Z",
+      "updatedAt": "2026-10-02T15:00:00.000Z",
+      "assignedTo": { "id": 2, "fullName": "Técnico" },
+      "events": [
+        {
+          "id": 1,
+          "action": "CREATED",
+          "details": {},
+          "createdAt": "2026-10-01T15:00:00.000Z",
+          "actor": { "id": 1, "fullName": "Nombre Apellido" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+`assignedTo` y `actor` pueden ser `null`. `status`: `OPEN`, `IN_PROGRESS`, `PROVIDER`, `CLOSED`, `CANCELLED`. `priority`: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`. `level`: `LEVEL_1`, `LEVEL_2`, `PROVEEDOR`.
+
+## Documentos del activo
+
+Solo cartas responsivas.
+
+### GET /assets/:id/documents
+
+`404` si el activo no existe.
+
+```json
+{
+  "documents": [
+    {
+      "id": 3,
+      "originalName": "carta.pdf",
+      "mimeType": "application/pdf",
+      "sizeBytes": 120000,
+      "assignedToName": "Ana López",
+      "assignedToDate": "2024-04-10T00:00:00.000Z",
+      "createdAt": "2024-04-10T18:00:00.000Z",
+      "uploadedBy": { "id": 1, "fullName": "Nombre Apellido" }
+    }
+  ]
+}
+```
+
+### GET /assets/:id/documents/:docId/download
+
+Respuesta binaria, no JSON. Header `Content-Disposition: attachment`. `404` si el documento no es de ese activo o el archivo ya no está en el servidor.
+
+## Conteos físicos
+
+Mismos permisos que la web.
+
+| Acción | Método | Permiso |
+|---|---|---|
+| Listar | `GET /physical-counts` | `assets.read` |
+| Ver | `GET /physical-counts/:id` | `assets.read` |
+| Conciliación | `GET /physical-counts/:id/reconciliation` | `assets.read` |
+| Crear | `POST /physical-counts` `{ "name", "locationId"? }` | `assets.write` |
+| Marcar ítem | `PUT /physical-counts/:id/items/:itemId` `{ "found"?, "notes"? }` | `assets.write` |
+| Cerrar | `POST /physical-counts/:id/complete` | `assets.write` |
+| Foto | `POST /physical-counts/:id/items/:itemId/photos` campo `file` (JPG, PNG o WebP, máx. 10 MB) | `assets.write` |
+| Ver foto | `GET /physical-counts/:id/items/:itemId/photos/:photoId` | `assets.read` |
+| Borrar foto | `DELETE /physical-counts/:id/items/:itemId/photos/:photoId` | `assets.write` |
+| Escanear | `POST /physical-counts/:id/scan` `{ "assetId" }` | `assets.write` |
+
+El detalle incluye `items[]` con el activo, `found`, `notes`, `verifiedAt` y `photos` (sin el archivo; la foto se baja con el GET). Un conteo cerrado (`status: "COMPLETED"`) rechaza marcas, escaneo y fotos con `400` y `"El conteo ya esta cerrado"`.
+
+### POST /physical-counts/:id/scan
+
+`assetId` es el `id` del QR. Marca ese equipo como encontrado.
+
+```json
+{ "assetId": 123 }
+```
+
+```json
+{
+  "item": {
+    "id": 50,
+    "found": true,
+    "notes": null,
+    "verifiedAt": "2026-10-20T17:00:00.000Z",
+    "asset": { "id": 123, "assetCode": "LAP-0001", "brand": "Dell", "model": "Latitude", "serialNumber": "SN123" }
+  }
+}
+```
+
+`404` `"Activo no encontrado en el conteo"` si ese equipo no forma parte del conteo. No modifica otros campos.
+
 ## Código QR
 
 Texto del QR, generado por la web:
@@ -211,7 +334,7 @@ Texto del QR, generado por la web:
 |---|---|
 | `t` | Debe ser `"asset"` |
 | `v` | Debe ser `1` |
-| `id` | Llamar `GET /assets/:id` |
+| `id` | Detalle: `GET /assets/:id`. Dentro de un conteo: `POST /physical-counts/:id/scan` con `{ "assetId": id }` |
 | `c` | Código para mostrar mientras carga el detalle |
 
 Si el texto no es ese JSON, o `t` / `v` no coinciden, mostrar "QR no reconocido" y no llamar a la API.
@@ -224,7 +347,7 @@ Todas las fallas usan `{ "message": "..." }`.
 |---|---|---|
 | 400 | Cuerpo o query inválidos. `"Datos inválidos"` | Corregir la petición. No reintentar igual |
 | 401 | Sin token, token vencido o credenciales mal. `"Token no proporcionado"`, `"Token invalido o expirado"`, `"Credenciales inválidas"`, `"Refresh token inválido"` | En datos: un refresh y reintento. Si el refresh falla: borrar tokens y login con "Tu sesión expiró. Inicia sesión de nuevo." |
-| 403 | Usuario sin `assets.read`. `"Sin permisos suficientes"` | Pantalla de acceso denegado. No reintentar |
+| 403 | Falta `assets.read` o `assets.write`. `"Sin permisos suficientes"` | Ocultar la acción. No reintentar |
 | 404 | Ubicación o activo inexistente | Mensaje del `message` y volver atrás |
 | 429 | Demasiados login o refresh | Esperar y mostrar el `message` |
 | 500 | Error interno. `"Error interno del servidor"` | "Reintentar" |
@@ -250,6 +373,15 @@ curl -s "$BASE/locations/4/assets?includeChildren=true" \
 
 curl -s "$BASE/assets/2" \
   -H "Authorization: Bearer TOKEN"
+
+curl -s "$BASE/me" -H "Authorization: Bearer TOKEN"
+curl -s "$BASE/assets/2/tickets" -H "Authorization: Bearer TOKEN"
+curl -s "$BASE/assets/2/documents" -H "Authorization: Bearer TOKEN"
+curl -s -O -J "$BASE/assets/2/documents/3/download" -H "Authorization: Bearer TOKEN"
+curl -s "$BASE/physical-counts" -H "Authorization: Bearer TOKEN"
+curl -s -X POST "$BASE/physical-counts/1/scan" \
+  -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" \
+  -d '{"assetId":123}'
 ```
 
 ## Guía de diseño
@@ -330,6 +462,9 @@ Lucide, trazo 2. En React Native: `lucide-react-native`. En Flutter: `lucide_ico
 | Ubicación | `MapPin` |
 | Equipo | `Monitor` |
 | Escanear | `QrCode` |
+| Tickets | `Ticket` |
+| Documentos | `FileText` |
+| Conteos | `ClipboardCheck` |
 | Responsable | `User` |
 | Fechas | `Calendar` |
 
@@ -342,8 +477,10 @@ Español, el mismo vocabulario de la web: Activo, Ubicación, Responsable, Descr
 1. **Login.** Placa con el logo, campo Correo, campo Contraseña, botón "Iniciar sesión" en primary. Error de credenciales bajo el formulario, color error.
 2. **Ubicaciones.** Lista con buscador. Cada fila: nombre (`on-surface`) y `path` (`on-surface-variant`).
 3. **Activos.** Switch "Incluir sububicaciones" (equivale a `includeChildren=true`). Tarjeta: `assetCode`, marca y modelo, responsable, chip de estatus. Toque abre el detalle con `id`.
-4. **Detalle.** Secciones General (`assetCode`, tipo, estatus, descripción), Hardware (procesador, RAM, almacenamiento), Responsable (nombre y fecha) y Ubicación (`location.path`). Omitir la línea si el campo es null.
+4. **Detalle.** Secciones General (`assetCode`, tipo, estatus, descripción), Hardware (procesador, RAM, almacenamiento), Responsable (nombre y fecha) y Ubicación (`location.path`). Pestañas Tickets (`GET /assets/:id/tickets`) y Documentos (lista y descarga). Omitir la línea si el campo es null.
 5. **Escáner.** Botón flotante con `QrCode` sobre la lista de activos. Al leer, validar el JSON y abrir el detalle.
+6. **Perfil.** Datos de `GET /me`: nombre, correo y rol.
+7. **Conteos.** Lista de `GET /physical-counts`. Dentro de uno en curso, ítems con chip encontrado / faltante. Si `permissions` incluye `assets.write`: crear, marcar, cerrar, foto y botón de escaneo que llama `POST /physical-counts/:id/scan`. Si no, solo lectura.
 
 ### Estados de interfaz
 

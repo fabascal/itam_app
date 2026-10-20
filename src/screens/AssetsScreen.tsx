@@ -138,11 +138,11 @@ export function AssetsScreen({ route }: Props) {
         style={[
           styles.fab,
           {
-            backgroundColor: colors.primary,
+            backgroundColor: colors.brand,
             bottom: insets.bottom + 16,
           },
         ]}>
-        <QrCode color={colors.onPrimary} size={24} strokeWidth={2} />
+        <QrCode color={colors.onBrand} size={24} strokeWidth={2} />
       </Pressable>
     </View>
   );

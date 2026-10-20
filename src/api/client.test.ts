@@ -86,3 +86,49 @@ test('un refresh inválido cierra la sesión', async () => {
   await expect(client.request('/locations')).rejects.toBeInstanceOf(ApiError);
   expect(onSessionExpired).toHaveBeenCalledTimes(1);
 });
+
+test('FormData no fuerza Content-Type', async () => {
+  const fetchFn = jest.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    expect(headers.get('Content-Type')).toBeNull();
+    expect(init?.body).toBeInstanceOf(FormData);
+    return jsonResponse(200, {});
+  });
+  const client = createApiClient({
+    baseUrl: 'https://example.test',
+    fetchFn: fetchFn as typeof fetch,
+    store: memoryStore(),
+    onSessionExpired: jest.fn(),
+  });
+  const form = new FormData();
+  form.append('file', 'foto');
+  await client.request('/upload', { method: 'POST', body: form });
+});
+
+test('withAuth reintenta tras un refresh', async () => {
+  let refreshCalls = 0;
+  const fetchFn = jest.fn(async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/auth/refresh')) {
+      refreshCalls += 1;
+      return jsonResponse(200, { accessToken: 'new', refreshToken: 'r2' });
+    }
+    return jsonResponse(200, {});
+  });
+  const client = createApiClient({
+    baseUrl: 'https://example.test',
+    fetchFn: fetchFn as typeof fetch,
+    store: memoryStore(),
+    onSessionExpired: jest.fn(),
+  });
+  let attempts = 0;
+  const result = await client.withAuth(async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      throw new ApiError(401, 'Token invalido o expirado');
+    }
+    return 'ok';
+  });
+  expect(result).toBe('ok');
+  expect(attempts).toBe(2);
+  expect(refreshCalls).toBe(1);
+});

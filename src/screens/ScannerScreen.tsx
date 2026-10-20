@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
+import type { StaticScreenProps } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Camera,
@@ -14,18 +15,25 @@ import {
 import type { MainParamList } from '../navigation/types';
 import { font, radii } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
+import { isApiError, useSession } from '../auth/session';
+import { runCountScan } from '../utils/countScan';
 import { parseAssetQr } from '../utils/qr';
 
 const QR_TYPES: ScannedObjectType[] = ['qr'];
 
-export function ScannerScreen() {
+type Props = StaticScreenProps<{ countId?: number } | undefined>;
+
+export function ScannerScreen({ route }: Props) {
   const { colors } = useTheme();
+  const { api } = useSession();
   const focused = useIsFocused();
   const navigation = useNavigation<NativeStackNavigationProp<MainParamList>>();
+  const countId = route.params?.countId;
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const handled = useRef(false);
   const [unrecognized, setUnrecognized] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   const onObjectsScanned = useCallback(
     (objects: ScannedObject[]) => {
@@ -45,9 +53,21 @@ export function ScannerScreen() {
         setUnrecognized(true);
         return;
       }
+      if (countId) {
+        runCountScan(api, countId, parsed.id)
+          .then(result => {
+            setScanMessage(result.ok ? result.code : result.message);
+            handled.current = false;
+          })
+          .catch(caught => {
+            setScanMessage(isApiError(caught) ? caught.message : 'No hay conexión.');
+            handled.current = false;
+          });
+        return;
+      }
       navigation.replace('AssetDetail', { id: parsed.id, code: parsed.code });
     },
-    [navigation],
+    [api, countId, navigation],
   );
 
   const output = useObjectOutput({
@@ -92,6 +112,13 @@ export function ScannerScreen() {
         outputs={[output]}
         style={StyleSheet.absoluteFill}
       />
+      {scanMessage ? (
+        <View style={[styles.banner, { backgroundColor: colors.primaryContainer }]}>
+          <Text style={[styles.text, { color: colors.onPrimaryContainer }]}>
+            {scanMessage}
+          </Text>
+        </View>
+      ) : null}
       {unrecognized ? (
         <View style={[styles.banner, { backgroundColor: colors.errorContainer }]}>
           <Text style={[styles.text, { color: colors.onErrorContainer }]}>

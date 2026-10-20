@@ -20,6 +20,8 @@ export const lightColors = {
   onSurfaceVariant: '#45464f',
   outline: '#767680',
   outlineVariant: '#c6c5d0',
+  brand: '#004B87',
+  onBrand: '#ffffff',
 };
 
 export const darkColors = {
@@ -44,6 +46,8 @@ export const darkColors = {
   onSurfaceVariant: '#c6c5d0',
   outline: '#908f9a',
   outlineVariant: '#45464f',
+  brand: '#004B87',
+  onBrand: '#ffffff',
 };
 
 export type Colors = typeof lightColors;

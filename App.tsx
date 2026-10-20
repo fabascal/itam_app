@@ -1,4 +1,5 @@
 import { StatusBar, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SessionProvider, useSession } from './src/auth/session';
 import { LoadingState } from './src/components/LoadingState';
 import { AppNavigation } from './src/navigation/AppNavigation';
@@ -26,9 +27,11 @@ function Gate() {
 
 export default function App() {
   return (
-    <SessionProvider>
-      <Gate />
-    </SessionProvider>
+    <GestureHandlerRootView style={styles.fill}>
+      <SessionProvider>
+        <Gate />
+      </SessionProvider>
+    </GestureHandlerRootView>
   );
 }
 

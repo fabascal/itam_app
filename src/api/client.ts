@@ -25,6 +25,10 @@ type RequestOptions = {
   auth?: boolean;
 };
 
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
 type ClientOptions = {
   baseUrl: string;
   fetchFn?: typeof fetch;
@@ -106,7 +110,8 @@ export function createApiClient(options: ClientOptions) {
     allowRefresh = true,
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (init.body !== undefined) {
+    const form = isFormData(init.body);
+    if (init.body !== undefined && !form) {
       headers['Content-Type'] = 'application/json';
     }
     if (init.auth !== false) {
@@ -121,7 +126,12 @@ export function createApiClient(options: ClientOptions) {
       response = await fetchFn(`${options.baseUrl}${path}`, {
         method: init.method ?? 'GET',
         headers,
-        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+        body:
+          init.body === undefined
+            ? undefined
+            : form
+              ? (init.body as BodyInit_)
+              : JSON.stringify(init.body),
       });
     } catch {
       throw new ApiError(0, 'No hay conexión.');
@@ -147,7 +157,35 @@ export function createApiClient(options: ClientOptions) {
     return JSON.parse(text) as T;
   }
 
-  return { request };
+  async function withAuth<T>(
+    fn: (token: string) => Promise<T>,
+    allowRefresh = true,
+  ): Promise<T> {
+    const token = await options.store.getAccessToken();
+    if (!token) {
+      options.onSessionExpired();
+      throw new ApiError(401, 'Tu sesión expiró. Inicia sesión de nuevo.');
+    }
+    try {
+      return await fn(token);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        allowRefresh
+      ) {
+        const renewed = await refresh();
+        if (!renewed) {
+          options.onSessionExpired();
+          throw new ApiError(401, 'Tu sesión expiró. Inicia sesión de nuevo.');
+        }
+        return withAuth(fn, false);
+      }
+      throw error;
+    }
+  }
+
+  return { request, withAuth };
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { API_BASE, ApiError, createApiClient, type TokenStore } from '../api/client';
 import { createMobileApi, type MobileApi } from '../api/mobile';
+import type { User } from '../api/types';
 import { clearSession, readSession, writeSession, type StoredSession } from './storage';
 
 type Status = 'signedOut' | 'signedIn' | 'denied';
@@ -18,10 +19,14 @@ type SessionContextValue = {
   ready: boolean;
   status: Status;
   notice: string | null;
+  user: User | null;
+  accessToken: string | null;
+  canWrite: boolean;
   api: MobileApi;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   deny: () => void;
+  refreshMe: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -31,6 +36,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<Status>('signedOut');
   const [notice, setNotice] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const store = useMemo<TokenStore>(
     () => ({
@@ -42,6 +50,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
         const next = { ...sessionRef.current, ...tokens };
         sessionRef.current = next;
+        setAccessToken(tokens.accessToken);
         await writeSession(next);
       },
     }),
@@ -50,6 +59,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const expire = useCallback(() => {
     sessionRef.current = null;
+    setUser(null);
+    setPermissions([]);
+    setAccessToken(null);
     clearSession().catch(() => undefined);
     setNotice('Tu sesión expiró. Inicia sesión de nuevo.');
     setStatus('signedOut');
@@ -75,6 +87,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         sessionRef.current = stored;
+        setUser(stored?.user ?? null);
+        setPermissions(stored?.permissions ?? []);
+        setAccessToken(stored?.accessToken ?? null);
         if (!stored) {
           setStatus('signedOut');
         } else if (!stored.permissions.includes('assets.read')) {
@@ -88,6 +103,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         sessionRef.current = null;
+        setUser(null);
+        setPermissions([]);
+        setAccessToken(null);
         setStatus('signedOut');
       })
       .finally(() => {
@@ -110,6 +128,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         permissions: result.permissions,
       };
       sessionRef.current = stored;
+      setUser(stored.user);
+      setPermissions(stored.permissions);
+      setAccessToken(stored.accessToken);
       await writeSession(stored);
       setNotice(null);
       setStatus(
@@ -122,6 +143,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     const refreshToken = sessionRef.current?.refreshToken;
     sessionRef.current = null;
+    setUser(null);
+    setPermissions([]);
+    setAccessToken(null);
     setNotice(null);
     setStatus('signedOut');
     try {
@@ -143,9 +167,62 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus('denied');
   }, []);
 
+  const refreshMe = useCallback(async () => {
+    if (!sessionRef.current) {
+      return;
+    }
+    const result = await api.me();
+    if (!sessionRef.current) {
+      return;
+    }
+    const next = {
+      ...sessionRef.current,
+      user: result.user,
+      permissions: result.permissions,
+    };
+    sessionRef.current = next;
+    setUser(result.user);
+    setPermissions(result.permissions);
+    await writeSession(next);
+    if (!result.permissions.includes('assets.read')) {
+      setStatus('denied');
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (!ready || status !== 'signedIn') {
+      return;
+    }
+    refreshMe().catch(() => undefined);
+  }, [ready, refreshMe, status]);
+
   const value = useMemo(
-    () => ({ ready, status, notice, api, signIn, signOut, deny }),
-    [api, deny, notice, ready, signIn, signOut, status],
+    () => ({
+      ready,
+      status,
+      notice,
+      user,
+      accessToken,
+      canWrite: permissions.includes('assets.write'),
+      api,
+      signIn,
+      signOut,
+      deny,
+      refreshMe,
+    }),
+    [
+      accessToken,
+      api,
+      deny,
+      notice,
+      permissions,
+      ready,
+      refreshMe,
+      signIn,
+      signOut,
+      status,
+      user,
+    ],
   );
 
   return (

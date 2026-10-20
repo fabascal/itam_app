@@ -34,7 +34,9 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>La app usa la cámara para leer el código QR del activo.</string>
+	<string>La app usa la cámara para leer el código QR del activo y tomar fotos del conteo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>La app usa la galería para adjuntar fotos del conteo.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string/>
 	<key>RCTNewArchEnabled</key>

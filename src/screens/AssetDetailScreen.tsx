@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StaticScreenProps } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,7 +10,8 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { StatusChip } from '../components/StatusChip';
 import type { MainParamList } from '../navigation/types';
-import { font } from '../theme/tokens';
+import { DocumentsPane, TicketsPane } from './AssetExtra';
+import { font, radii } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
 import { formatDate } from '../utils/date';
 
@@ -34,6 +35,7 @@ export function AssetDetailScreen({ route }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [canRetry, setCanRetry] = useState(true);
+  const [tab, setTab] = useState<'general' | 'tickets' | 'documents'>('general');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +99,40 @@ export function AssetDetailScreen({ route }: Props) {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
       style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={styles.tabs}>
+        {(
+          [
+            ['general', 'General'],
+            ['tickets', 'Tickets'],
+            ['documents', 'Documentos'],
+          ] as const
+        ).map(([key, label]) => {
+          const selected = tab === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => setTab(key)}
+              style={[
+                styles.tab,
+                {
+                  backgroundColor: selected ? colors.brand : colors.surfaceLow,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: selected ? colors.onBrand : colors.onSurface },
+                ]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {tab === 'tickets' ? <TicketsPane assetId={asset.id} /> : null}
+      {tab === 'documents' ? <DocumentsPane assetId={asset.id} /> : null}
+      {tab === 'general' ? (
+        <>
       <Text style={[styles.section, { color: colors.onSurface }]}>General</Text>
       <Text style={[styles.code, { color: colors.onSurface }]}>{asset.assetCode}</Text>
       {asset.assetType ? (
@@ -147,6 +183,8 @@ export function AssetDetailScreen({ route }: Props) {
           </View>
         </>
       ) : null}
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -188,5 +226,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
+  },
+  tabs: { flexDirection: 'row', gap: 8 },
+  tab: {
+    borderRadius: radii.control,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  tabLabel: {
+    fontFamily: font.semibold,
+    fontSize: 12,
   },
 });

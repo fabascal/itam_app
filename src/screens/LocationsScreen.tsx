@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -7,41 +7,19 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { MapPin } from 'lucide-react-native';
 import type { Location } from '../api/types';
 import { isApiError, useSession } from '../auth/session';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
-import type { MainParamList } from '../navigation/types';
 import { font, radii } from '../theme/tokens';
 import { useTheme } from '../theme/useTheme';
-
-function HeaderLogout() {
-  const { colors } = useTheme();
-  const { signOut } = useSession();
-  return (
-    <Pressable
-      onPress={() => {
-        signOut().catch(() => undefined);
-      }}>
-      <Text style={[styles.logout, { color: colors.primary }]}>
-        Cerrar sesión
-      </Text>
-    </Pressable>
-  );
-}
-
-function renderHeaderLogout() {
-  return <HeaderLogout />;
-}
 
 export function LocationsScreen() {
   const { colors } = useTheme();
   const { api, deny } = useSession();
-  const navigation =
-    useNavigation<NativeStackNavigationProp<MainParamList, 'Locations'>>();
+  const navigation = useNavigation();
   const [locations, setLocations] = useState<Location[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -72,10 +50,6 @@ export function LocationsScreen() {
   useEffect(() => {
     load().catch(() => undefined);
   }, [load]);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerRight: renderHeaderLogout });
-  }, [navigation]);
 
   const q = query.trim().toLowerCase();
   const visible = locations.filter(
@@ -126,10 +100,12 @@ export function LocationsScreen() {
         renderItem={({ item }) => (
           <Pressable
             onPress={() =>
-              navigation.navigate('Assets', {
-                locationId: item.id,
-                name: item.name,
-              })
+              navigation.dispatch(
+                CommonActions.navigate({
+                  name: 'Assets',
+                  params: { locationId: item.id, name: item.name },
+                }),
+              )
             }
             style={[styles.row, { borderBottomColor: colors.outlineVariant }]}>
             <MapPin color={colors.onSurfaceVariant} size={20} strokeWidth={2} />
@@ -150,10 +126,6 @@ export function LocationsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  logout: {
-    fontFamily: font.medium,
-    fontSize: 14,
-  },
   search: {
     borderRadius: radii.control,
     borderWidth: 1,
